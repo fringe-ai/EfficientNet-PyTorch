@@ -124,4 +124,10 @@ tf_to_pytorch/pretrained_tensorflow
 examples/imagenet/run.sh
 
 
+#ignore weights
+*.pt
 
+#ignore folders
+data
+runs
+validation
