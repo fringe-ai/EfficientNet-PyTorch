@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import os
+import json
 import numpy as np
 from torch.optim import optimizer
 from efficientnet_pytorch import EfficientNet
@@ -63,8 +64,7 @@ def train_loop(dataloader, model, loss_fn, optimizer, device):
 
         # get the accuracy
         with torch.no_grad():
-            pred = nn.Softmax(dim=1)(pred)
-            correct += (pred.argmax(1) == y).type(torch.float).sum().item()
+            correct += (pred.softmax(1).argmax(1) == y).type(torch.float).sum().item()
             total_loss += loss.item()
 
         # Backpropagation
@@ -108,8 +108,8 @@ def val_loop(dataloader, model, loss_fn, device, save_imgs_path=None):
                 y = y.to(device)
             pred = model(X)
             loss += loss_fn(pred, y).item()
-            pred = nn.Softmax(dim=1)(pred)
-            correct += (pred.argmax(1) == y).type(torch.float).sum().item()
+            pred = pred.softmax(1)
+            correct += (pred.softmax(1).argmax(1) == y).type(torch.float).sum().item()
             if save_imgs_path:
                 for i,x in enumerate(X):
                     pred_id = pred[i].argmax().item()
@@ -123,26 +123,50 @@ def val_loop(dataloader, model, loss_fn, device, save_imgs_path=None):
 
 
 if __name__=='__main__':
-    path_data = './data/cropped_224x224'
-    model_name = 'efficientnet-b0'
-    path_output = './trained-inference-models/2022-01-12_224'
-    path_save_imgs = './validation/2022-01-12_224'
-    path_tensorboard = './runs/2022-01-12'
-    image_size = (224,224)
-    batch_size = 32
-    lr = 5e-5
-    weight_decay = 1e-5
-    #lr_decay = 0.97 # for every 2.4 epoch
-    epochs = 80
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--path_imgs', required=True, help='the path to input images')
+    parser.add_argument('--path_out', required=True, help='the path to the trained model and image outputs')
+    parser.add_argument('--class_map_file', default="class_map.json", help='[optional] the class map file providing <class: id>, default="class_map.json" in the "--path_imgs" folder')
+    parser.add_argument('--model_name', default='b0', help='[optional] the model name, default="b0"')
+    parser.add_argument('--lr', type=float, default=5e-5, help='[optional] the learning rate, default=5e-5')
+    parser.add_argument('--batch', type=int, default=8, help='[optional] the batch size, default=8')
+    parser.add_argument('--epoch', type=int, default=200, help='[optional] the num of epoch, default=200')
+    parser.add_argument('--weight_decay', type=float, default=1e-5, help='[optional] the weight decay i.e. l2 regulator, default=1e-5')
+    args = vars(parser.parse_args())
 
-    tfms = transforms.Compose([transforms.Resize(image_size),
-                           transforms.ToTensor(),
-                           ])
+    path_data = args['path_imgs']
+    path_class_map = os.path.join(path_data, 'class_map.json')
+    model_name = 'efficientnet-'+args['model_name']
+    path_output = args['path_out']
+    batch_size = args['batch']
+    lr = args['lr']
+    weight_decay = args['weight_decay']
+    epochs = args['epoch']
 
-    dataset = NordsonDataSet(path_data, transform=tfms)
-    num_class = len(dataset.class_to_id)
-    train_dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=8)
-    val_dataloader = DataLoader(dataset, batch_size=batch_size, num_workers=8)
+    train_tfms = transforms.Compose([
+        transforms.RandomHorizontalFlip(),
+        transforms.RandomVerticalFlip(),
+        transforms.ToTensor(),
+        ])
+
+    val_tfms = transforms.Compose([
+        transforms.ToTensor(),
+        ])
+
+    #--------------------------------------------------------------------------------------------
+
+    if not os.path.isfile(path_class_map):
+        raise Exception(f"Not found the file: {path_class_map}")
+
+    with open(path_class_map) as f:
+        class_map = json.load(f)
+
+    train_dataset = NordsonDataSet(path_data, class_map, transform=train_tfms)
+    train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=8)
+
+    val_dataset = NordsonDataSet(path_data, class_map, transform=val_tfms)
+    val_dataloader = DataLoader(val_dataset, batch_size=batch_size, shuffle=True, num_workers=8)
 
     if torch.cuda.is_available():
         device = torch.device('cuda:0') 
@@ -152,17 +176,19 @@ if __name__=='__main__':
         device = torch.device('cpu')
         print('Using CPU')
 
-    model = EfficientNet.from_pretrained(model_name, num_classes=num_class).to(device)
+    num_classes = len(train_dataset.class_to_id)
+    im_size = train_dataset.im_size[:2]
+    print(f'found num of classes: {num_classes}')
+    print(f'found image size: {train_dataset.im_size}')
+    model = EfficientNet.from_pretrained(model_name, num_classes=num_classes, image_size=im_size).to(device)
     loss_fn = nn.CrossEntropyLoss()
     #optimizer = torch.optim.RMSprop(model.parameters(), lr=lr, weight_decay=weight_decay, alpha=0.9, momentum=0.9)
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
 
     if not os.path.isdir(path_output):
         os.makedirs(path_output)
-    if not os.path.isdir(path_save_imgs):
-        os.makedirs(path_save_imgs)
 
-    writer = SummaryWriter(log_dir=path_tensorboard, flush_secs=5)
+    writer = SummaryWriter(flush_secs=5)
     min_loss = float('inf')
     for t in range(epochs):
         print(f"Epoch {t+1}\n-------------------------------")
@@ -183,6 +209,7 @@ if __name__=='__main__':
     print('loading the best model')
     model.load_state_dict(torch.load(os.path.join(path_output,'best.pt')))
     #save predicted images
-    val_loop(val_dataloader, model, loss_fn, device, save_imgs_path=path_save_imgs)
+    val_loop(val_dataloader, model, loss_fn, device, save_imgs_path=path_output)
+    writer.close()
 
     print("Done!")

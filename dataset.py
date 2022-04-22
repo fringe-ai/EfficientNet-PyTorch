@@ -1,18 +1,18 @@
-import json
 import os
+import cv2
 import glob
 from PIL import Image
 from torch.utils.data import Dataset
-from torchvision.io import read_image
 from torchvision import transforms
 
 class NordsonDataSet(Dataset):
-    def __init__(self, main_dir, transform):
+    def __init__(self, main_dir:str, class_map:dict, transform):
         self.transform = transform
-        self.class_to_id = json.load(open(os.path.join(main_dir,'class_map.json')))
+        self.class_to_id = class_map
         self.id_to_class = {self.class_to_id[c]:c for c in self.class_to_id}
         self._img_paths = []
         self._labels = []
+        self.im_size = None
         #load image path with its label
         #assign each 
         dirs = os.listdir(main_dir)
@@ -23,6 +23,9 @@ class NordsonDataSet(Dataset):
             assert d in self.class_to_id
             label = [self.class_to_id[d]]
             l = glob.glob(os.path.join(p,'*.png'))
+            if l and self.im_size is None:
+                #load 1st image to get the image size
+                self.im_size = cv2.imread(l[0]).shape
             self._img_paths += l
             self._labels += label*len(l)
 
