@@ -4,10 +4,18 @@ import os
 import json
 import numpy as np
 from torch.optim import optimizer
-from efficientnet_pytorch import EfficientNet
 from torchvision import transforms
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
+from pathlib import Path
+import sys
+
+FILE = Path(__file__).resolve()
+ROOT = FILE.parents[0]  # root directory
+if str(ROOT) not in sys.path:
+    sys.path.append(str(ROOT))
+
+from efficientnet_pytorch import EfficientNet
 
 #LMI modules
 from dataset import NordsonDataSet
