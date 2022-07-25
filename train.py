@@ -136,6 +136,7 @@ if __name__=='__main__':
     parser.add_argument('--path_imgs', required=True, help='the path to input images')
     parser.add_argument('--path_out', required=True, help='the path to the trained model and image outputs')
     parser.add_argument('--class_map_file', default="class_map.json", help='[optional] the class map file providing <class: id>, default="class_map.json" in the "--path_imgs" folder')
+    parser.add_argument('--in_channels', default=3, type=int, help='the image number of channels, default=3')
     parser.add_argument('--model_name', default='b0', help='[optional] the model name, default="b0"')
     parser.add_argument('--lr', type=float, default=5e-5, help='[optional] the learning rate, default=5e-5')
     parser.add_argument('--batch', type=int, default=8, help='[optional] the batch size, default=8')
@@ -145,6 +146,7 @@ if __name__=='__main__':
 
     path_data = args['path_imgs']
     path_class_map = os.path.join(path_data, 'class_map.json')
+    in_channels = args['in_channels']
     model_name = 'efficientnet-'+args['model_name']
     path_output = args['path_out']
     batch_size = args['batch']
@@ -154,7 +156,7 @@ if __name__=='__main__':
 
     train_tfms = transforms.Compose([
         transforms.RandomHorizontalFlip(),
-        transforms.RandomVerticalFlip(),
+        #transforms.RandomVerticalFlip(),
         transforms.ToTensor(),
         ])
 
@@ -188,7 +190,7 @@ if __name__=='__main__':
     im_size = train_dataset.im_size[:2]
     print(f'found num of classes: {num_classes}')
     print(f'found image size: {train_dataset.im_size}')
-    model = EfficientNet.from_pretrained(model_name, num_classes=num_classes, image_size=im_size).to(device)
+    model = EfficientNet.from_pretrained(model_name, num_classes=num_classes, image_size=im_size, in_channels=in_channels).to(device)
     loss_fn = nn.CrossEntropyLoss()
     #optimizer = torch.optim.RMSprop(model.parameters(), lr=lr, weight_decay=weight_decay, alpha=0.9, momentum=0.9)
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
