@@ -17,7 +17,7 @@ def parse_args():
     parser.add_argument('-w', '--weights', required=True, help='Input weights (.pt) file path')
     parser.add_argument('-c', '--num_classes', required=True, help='the number of classes in the trained model')
     parser.add_argument('-o', '--out_file', required=True, help='the output weight file path')
-    parser.add_argument('--inc', default=3, type=int, help='the number of image channels')
+    parser.add_argument('--inc', default=3, type=int, help='the number of image channels, default=3')
     parser.add_argument('--model', default='efficientnet-b0', help='the name of the model, such as: efficientnet-b0')
     args = vars(parser.parse_args())
     if not os.path.isfile(args['weights']):
